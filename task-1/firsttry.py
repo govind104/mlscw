@@ -1,6 +1,24 @@
 import torch
+import cupy as cp
+import triton
+import numpy as np
+import time
+import json
+from test import testdata_kmeans, testdata_knn, testdata_ann
 
-def cosine_distance(x, y):
+# Choose the GPU if available; otherwise, fall back to CPU.
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+# ------------------------------------------------------------------------------------------------
+# Your Task 1.1 code here
+# ------------------------------------------------------------------------------------------------
+
+# You can create any kernel here
+# def distance_kernel(X, Y, D):
+#     pass
+
+def distance_cosine(x, y):
     """
     Compute cosine distance between two vectors
     d(X, Y) = 1 - (X · Y) / (||X|| ||Y||)
@@ -17,13 +35,13 @@ def cosine_distance(x, y):
     norm_y = torch.norm(y)
     
     # Handle zero-norm vectors to avoid division by zero
-    if norm_x == 0 or norm_y == 0:
-        return torch.tensor(1.0, device=x.device)
+    if norm_x.item() == 0 or norm_y.item() == 0:
+        return torch.tensor(1.0, device = x.device)
     
     return 1.0 - dot_product / (norm_x * norm_y)
 
 
-def l2_distance(x, y):
+def distance_l2(x, y):
     """
     Compute L2 (Euclidean) distance between two vectors
     d(X, Y) = sqrt(sum_i (X_i - Y_i)^2)
@@ -38,7 +56,7 @@ def l2_distance(x, y):
     return torch.sqrt(torch.sum((x - y) ** 2))
 
 
-def dot_product(x, y):
+def distance_dot(x, y):
     """
     Compute dot product between two vectors
     d(X, Y) = X · Y
@@ -53,7 +71,7 @@ def dot_product(x, y):
     return torch.dot(x, y)
 
 
-def manhattan_distance(x, y):
+def distance_manhattan(x, y):
     """
     Compute Manhattan (L1) distance between two vectors
     d(X, Y) = sum_i |X_i - Y_i|
@@ -67,91 +85,89 @@ def manhattan_distance(x, y):
     """
     return torch.sum(torch.abs(x - y))
 
+# ------------------------------------------------------------------------------------------------
+# Your Task 1.2 code here
+# ------------------------------------------------------------------------------------------------
 
-# Vectorized versions for computing distances between one vector and many vectors
-def cosine_distance_batch(x, y_batch):
+# You can create any kernel here
+
+def our_knn(N, D, A, X, K):
     """
-    Compute cosine distance between a vector and a batch of vectors
+    Find the top K nearest vectors to X from a collection A using L2 distance.
     
     Args:
-        x (torch.Tensor): Vector of shape [D]
-        y_batch (torch.Tensor): Batch of vectors of shape [N, D]
+      N (int): Number of vectors in A.
+      D (int): Dimension of each vector.
+      A (numpy.ndarray): Array of shape [N, D] containing the dataset.
+      X (numpy.ndarray): Query vector of shape [D].
+      K (int): Number of nearest neighbors to retrieve.
     
     Returns:
-        torch.Tensor: Cosine distances of shape [N]
+      numpy.ndarray: Top K nearest vectors (each of dimension D).
     """
-    # Reshape x to [1, D] for broadcasting
-    x = x.view(1, -1)
+    # Convert the dataset and query vector to torch tensors on the device.
+    A_tensor = torch.tensor(A, dtype=torch.float32, device=device)
+    X_tensor = torch.tensor(X, dtype=torch.float32, device=device)
     
-    # Compute dot products
-    dot_products = torch.matmul(y_batch, x.t()).squeeze()
+    # Compute the L2 distance for each vector in A (broadcasting X_tensor)
+    distances = torch.norm(A_tensor - X_tensor, dim=1)
     
-    # Compute norms
-    norm_x = torch.norm(x)
-    norm_y_batch = torch.norm(y_batch, dim=1)
+    # Get the indices of the K smallest distances
+    indices = torch.argsort(distances)[:K]
     
-    # Handle zero-norm vectors
-    zero_mask = (norm_x == 0) | (norm_y_batch == 0)
+    # Retrieve the top K vectors
+    top_k_vectors = A_tensor[indices]
     
-    # Compute cosine distances
-    similarities = dot_products / (norm_x * norm_y_batch)
-    distances = 1.0 - similarities
-    
-    # Set distance to 1.0 for zero-norm vectors
-    distances = torch.where(zero_mask, torch.ones_like(distances), distances)
-    
-    return distances
+    # Return the result to CPU as a NumPy array
+    return top_k_vectors.cpu().numpy()
 
+# ------------------------------------------------------------------------------------------------
+# Your Task 2.1 code here
+# ------------------------------------------------------------------------------------------------
 
-def l2_distance_batch(x, y_batch):
-    """
-    Compute L2 distances between a vector and a batch of vectors
-    
-    Args:
-        x (torch.Tensor): Vector of shape [D]
-        y_batch (torch.Tensor): Batch of vectors of shape [N, D]
-    
-    Returns:
-        torch.Tensor: L2 distances of shape [N]
-    """
-    # Reshape x to [1, D] for broadcasting
-    x = x.view(1, -1)
-    
-    # Compute squared differences
-    squared_diff = (y_batch - x) ** 2
-    
-    # Sum across dimensions and take square root
-    return torch.sqrt(torch.sum(squared_diff, dim=1))
+# You can create any kernel here
+# def distance_kernel(X, Y, D):
+#     pass
 
+def our_kmeans(N, D, A, K):
+    pass
 
-def dot_product_batch(x, y_batch):
-    """
-    Compute dot products between a vector and a batch of vectors
-    
-    Args:
-        x (torch.Tensor): Vector of shape [D]
-        y_batch (torch.Tensor): Batch of vectors of shape [N, D]
-    
-    Returns:
-        torch.Tensor: Dot products of shape [N]
-    """
-    # Use matrix multiplication for efficient computation
-    return torch.matmul(y_batch, x)
+# ------------------------------------------------------------------------------------------------
+# Your Task 2.2 code here
+# ------------------------------------------------------------------------------------------------
 
+# You can create any kernel here
 
-def manhattan_distance_batch(x, y_batch):
+def our_ann(N, D, A, X, K):
+    pass
+
+# ------------------------------------------------------------------------------------------------
+# Test your code here
+# ------------------------------------------------------------------------------------------------
+
+# Example
+def test_kmeans():
+    N, D, A, K = testdata_kmeans("test_file.json")
+    kmeans_result = our_kmeans(N, D, A, K)
+    print(kmeans_result)
+
+def test_knn():
+    N, D, A, X, K = testdata_knn("test_file.json")
+    knn_result = our_knn(N, D, A, X, K)
+    print(knn_result)
+    
+def test_ann():
+    N, D, A, X, K = testdata_ann("test_file.json")
+    ann_result = our_ann(N, D, A, X, K)
+    print(ann_result)
+    
+def recall_rate(list1, list2):
     """
-    Compute Manhattan distances between a vector and a batch of vectors
-    
-    Args:
-        x (torch.Tensor): Vector of shape [D]
-        y_batch (torch.Tensor): Batch of vectors of shape [N, D]
-    
-    Returns:
-        torch.Tensor: Manhattan distances of shape [N]
+    Calculate the recall rate of two lists
+    list1[K]: The top K nearest vectors ID
+    list2[K]: The top K nearest vectors ID
     """
-    # Reshape x to [1, D] for broadcasting
-    x = x.view(1, -1)
-    
-    # Compute absolute differences and sum
-    return torch.sum(torch.abs(y_batch - x), dim=1)
+    return len(set(list1) & set(list2)) / len(list1)
+
+if __name__ == "__main__":
+    test_kmeans()
