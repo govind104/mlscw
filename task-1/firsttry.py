@@ -35,7 +35,7 @@ def distance_cosine(x, y):
     norm_y = torch.norm(y)
     
     # Handle zero-norm vectors to avoid division by zero
-    if norm_x.item() == 0 or norm_y.item() == 0:
+    if norm_x == 0 or norm_y == 0:
         return torch.tensor(1.0, device = x.device)
     
     return 1.0 - dot_product / (norm_x * norm_y)
