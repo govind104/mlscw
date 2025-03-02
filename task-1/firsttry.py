@@ -111,12 +111,15 @@ def our_knn(N, D, A, X, K):
     
     # Compute the L2 distance for each vector in A (broadcasting X_tensor)
     distances = torch.norm(A_tensor - X_tensor, dim=1)
+    print(f"Distances: {distances}")
     
     # Get the indices of the K smallest distances
     indices = torch.argsort(distances)[:K]
+    print(f"Indices of nearest neighbors: {indices}")
     
     # Retrieve the top K vectors
     top_k_vectors = A_tensor[indices]
+    print(f"Top K vectors: {top_k_vectors}")
     
     # Return the result to CPU as a NumPy array
     return top_k_vectors.cpu().numpy()
