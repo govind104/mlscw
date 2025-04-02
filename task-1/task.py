@@ -23,7 +23,6 @@ def distance_cosine(X, Y):
     cosine_sim = dot_product / (norm_X * norm_Y)
     return (1 - cosine_sim).item()
 
-
 def distance_l2(X, Y):
     X_tensor = torch.tensor(X, dtype=torch.float32, device='cuda')
     Y_tensor = torch.tensor(Y, dtype=torch.float32, device='cuda')
@@ -46,93 +45,118 @@ def distance_manhattan(X, Y):
 # ------------------------------------------------------------------------------------------------
 
 def our_knn(N, D, A, X, K):
-    # Convert input arrays to PyTorch tensors on the GPU
-    A_tensor = torch.tensor(A, dtype=torch.float32, device='cuda')
-    X_tensor = torch.tensor(X, dtype=torch.float32, device='cuda')
+    # Convert A and X to tensors on GPU
+    A_tensor = torch.tensor(A, dtype=torch.float32, device='cuda')  # (N, D)
+    X_tensor = torch.tensor(X, dtype=torch.float32, device='cuda')  # (D,)
     
-    # Compute L2 squared distances between X and all vectors in A
-    differences = A_tensor - X_tensor.unsqueeze(0)  # Broadcast subtraction
-    squared_distances = torch.sum(differences ** 2, dim=1)
+    # Compute distances using predefined distance_l2 (inefficient due to loops)
+    distances = []
+    for i in range(N):
+        # Convert tensors to numpy for the predefined function
+        a_np = A_tensor[i].cpu().numpy()
+        x_np = X_tensor.cpu().numpy()
+        dist = distance_l2(a_np, x_np)
+        distances.append(dist)
+    distances = torch.tensor(distances, device='cuda')  # (N,)
     
-    # Get indices of K smallest distances
-    _, indices = torch.topk(squared_distances, K, largest=False)
-    
-    # Return indices as numpy array (moved to CPU)
+    # Avoid topk: use argsort + slicing
+    sorted_indices = torch.argsort(distances)
+    indices = sorted_indices[:K]
+
     return indices.cpu().numpy()
 
 # ------------------------------------------------------------------------------------------------
 # Your Task 2.1 code here
 # ------------------------------------------------------------------------------------------------
 
-def our_kmeans(N, D, A, K, max_iters=100, tol=1e-4, return_centroids=False):
-    # Convert data to GPU tensor
-    data = torch.tensor(A, dtype=torch.float32, device='cuda')
+def our_kmeans(N, D, A, K, max_iters=100, tol=1e-4, return_centroids=False, distance_metric='l2'):
+    data = torch.tensor(A, dtype=torch.float32, device='cuda')  # (N, D)
     
-    # Initialize centroids randomly from data points
+    # Initialize centroids
     indices = torch.randperm(N, device='cuda')[:K]
-    centroids = data[indices].clone()
+    centroids = data[indices].clone()  # (K, D)
     
     cluster_ids = torch.zeros(N, dtype=torch.long, device='cuda')
     
     for _ in range(max_iters):
-        # Compute pairwise distances and assign clusters
-        dists = torch.cdist(data, centroids, p=2)
+        # Compute distances using predefined functions (nested loops)
+        dists = torch.zeros((N, K), device='cuda')
+        for i in range(N):
+            for k in range(K):
+                data_point = data[i].cpu().numpy()  # Inefficient!
+                centroid = centroids[k].cpu().numpy()
+                if distance_metric == 'cosine':
+                    dist = distance_cosine(data_point, centroid)
+                else:
+                    dist = distance_l2(data_point, centroid)
+                dists[i, k] = dist
+        
         new_cluster_ids = torch.argmin(dists, dim=1)
         
-        # Check for convergence
         if torch.all(new_cluster_ids == cluster_ids):
             break
         cluster_ids = new_cluster_ids
         
-        # Update centroids
+        # Update centroids (unchanged)
         new_centroids = torch.zeros_like(centroids)
         for k in range(K):
             mask = cluster_ids == k
             if mask.any():
                 new_centroids[k] = data[mask].mean(dim=0)
-            else:  # Reinitialize empty clusters
+            else:
                 new_centroids[k] = data[torch.randint(N, (1,), device='cuda')]
         centroids = new_centroids
     
-    # Return based on the flag
-    if return_centroids:
-        return cluster_ids, centroids  # GPU tensors
-    else:
-        return cluster_ids.cpu().numpy()  # CPU numpy array
+    return cluster_ids.cpu().numpy() if not return_centroids else (cluster_ids, centroids)
 
 # ------------------------------------------------------------------------------------------------
 # Your Task 2.2 code here
 # ------------------------------------------------------------------------------------------------
 
-def our_ann(N, D, A, X, K, ann_clusters=100, search_clusters=5):
-    # Convert data to GPU tensors
+def our_ann(N, D, A, X, K, ann_clusters=100, search_clusters=5, distance_metric='l2'):
     A_tensor = torch.tensor(A, dtype=torch.float32, device='cuda')
     X_tensor = torch.tensor(X, dtype=torch.float32, device='cuda')
     
-    # Step 1: Cluster data using K-means (returns GPU tensors)
-    cluster_ids, centroids = our_kmeans(N, D, A, ann_clusters, return_centroids=True)
+    # Step 1: Cluster data (using predefined distance functions)
+    cluster_ids, centroids = our_kmeans(N, D, A, ann_clusters, return_centroids=True, distance_metric=distance_metric)
     
-    # Step 2: Find nearest clusters to the query
-    query_dist = torch.cdist(X_tensor.unsqueeze(0), centroids).squeeze(0)
-    _, closest_clusters = torch.topk(query_dist, search_clusters, largest=False)
+    # Step 2: Find nearest clusters to query
+    cluster_distances = []
+    for k in range(ann_clusters):
+        centroid_np = centroids[k].cpu().numpy()
+        X_np = X_tensor.cpu().numpy()
+        if distance_metric == 'cosine':
+            dist = distance_cosine(X_np, centroid_np)
+        else:
+            dist = distance_l2(X_np, centroid_np)
+        cluster_distances.append(dist)
+    cluster_distances = torch.tensor(cluster_distances, device='cuda')
     
-    # Step 3: Collect candidate vectors from target clusters
-    mask = torch.isin(cluster_ids, closest_clusters)
-    candidates = A_tensor[mask]
-    candidate_indices = torch.nonzero(mask).squeeze()
+    # Avoid topk for cluster selection
+    sorted_cluster_indices = torch.argsort(cluster_distances)
+    closest_clusters = sorted_cluster_indices[:search_clusters]
     
-    # Step 4: Exact search within candidates
-    candidate_dists = torch.cdist(X_tensor.unsqueeze(0), candidates).squeeze(0)
-    _, topk_local = torch.topk(candidate_dists, K, largest=False)
+    # Step 3: Collect candidates from clusters
+    candidate_indices = []
+    for c in closest_clusters:
+        mask = (cluster_ids == c).cpu().numpy()
+        candidates = A[mask]  # A is a numpy array
+        for cand in candidates:
+            if distance_metric == 'cosine':
+                dist = distance_cosine(X, cand)
+            else:
+                dist = distance_l2(X, cand)
+            candidate_indices.append((dist, np.where(mask)[0][0]))
     
-    # Map back to original indices
-    result = candidate_indices[topk_local].cpu().numpy()
-    return result
+    # Step 4: Sort candidates and return top-K
+    candidate_indices.sort(key=lambda x: x[0])
+    final_indices = [idx for _, idx in candidate_indices[:K]]
+    return np.array(final_indices)
+
 # ------------------------------------------------------------------------------------------------
 # Test your code here
 # ------------------------------------------------------------------------------------------------
 
-# Example
 def test_kmeans():
     # Load test data
     N, D, A, K = testdata_kmeans("")
