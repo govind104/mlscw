@@ -6,7 +6,7 @@ import time
 import json
 from test import testdata_kmeans, testdata_knn, testdata_ann
 from sklearn.cluster import KMeans as SKLearnKMeans
-from sklearn.metrics import adjusted_rand_scoreQ
+from sklearn.metrics import adjusted_rand_score
 
 # ------------------------------------------------------------------------------------------------
 # Distance functions using CuPy
