@@ -113,11 +113,11 @@ async def load_test(url, pattern_config, test_queries):
     async with ClientSession() as session:
         tasks = []
         test_start = time.time()
-        
+
         for i, ts_ms in enumerate(timestamps_ms):
             # Schedule request at precise timestamp
             await asyncio.sleep(ts_ms/1000 - (time.time() - test_start))
-            
+
             query = test_queries[i % len(test_queries)]
             tasks.append(
                 send_request(session, url, query, i)
@@ -130,12 +130,12 @@ def analyze_results(results):
     latencies = [r[1] for r in results if r[2] == "success"]
     errors = [r for r in results if r[2] != "success"]
     error_rate = len(errors) / len(results) if results else 0
-    
+
     print(f"\n{'='*40}")
     print(f"Total requests: {len(results)}")
     print(f"Successful: {len(latencies)}")
     print(f"Error rate: {error_rate:.2%}")
-    
+
     if latencies:
         print("\nLatency metrics (seconds):")
         print(f"Average: {np.mean(latencies):.3f}")
@@ -143,7 +143,7 @@ def analyze_results(results):
         print(f"95th percentile: {np.percentile(latencies, 95):.3f}")
         print(f"99th percentile: {np.percentile(latencies, 99):.3f}")
         print(f"Throughput: {len(latencies)/sum(latencies):.2f} req/s")
-    
+
     # Bottleneck analysis
     print("\nBottleneck Indicators:")
     if latencies:
@@ -155,7 +155,7 @@ def analyze_results(results):
         achieved_throughput = len(latencies)/sum(latencies)
         if achieved_throughput < target_throughput * 0.8:
             print(f"- Throughput ({achieved_throughput:.1f} req/s) below 80% of target ({target_throughput} req/s)")
-    
+
     # Capacity warning
     if error_rate > 0.05:
         print("\n[WARNING] System capacity likely exceeded (error rate >5%)")
@@ -169,7 +169,7 @@ if __name__ == "__main__":
     parser.add_argument('--seed', type=int, help='Random seed for reproducibility')
 
     args = parser.parse_args()
-    
+
     # Sample queries
     test_queries = [
         "What are cats?",
@@ -178,7 +178,7 @@ if __name__ == "__main__":
         "Describe pets",
         "Explain animal locomotion"
     ]
-    
+
     pattern_config = {
         "rps": args.rps,
         "duration": args.duration,
@@ -188,13 +188,13 @@ if __name__ == "__main__":
 
     print(f"Starting load test with pattern: {pattern_config}")
     start_time = time.time()
-    
+
     results = asyncio.run(load_test(
         args.url,
         pattern_config,
         test_queries
     ))
-    
+
     total_time = time.time() - start_time
     print(f"\nTotal test time: {total_time:.2f} seconds")
     analyze_results(results)
