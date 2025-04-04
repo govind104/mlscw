@@ -159,21 +159,6 @@ def analyze_results(results):
     # Capacity warning
     if error_rate > 0.05:
         print("\n[WARNING] System capacity likely exceeded (error rate >5%)")
-    
-    # CSV reporting
-    timestamp = time.strftime("%Y%m%d-%H%M%S")
-    filename = f"load_test_{timestamp}.csv"
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write("metric,value\n")
-        f.write(f"total_requests,{len(results)}\n")
-        f.write(f"success_rate,{(1 - error_rate):.4f}\n")
-        f.write(f"avg_latency,{np.mean(latencies) if latencies else 0:.4f}\n")
-        f.write(f"p95_latency,{np.percentile(latencies, 95) if latencies else 0:.4f}\n")
-        f.write(f"p99_latency,{np.percentile(latencies, 99) if latencies else 0:.4f}\n")
-        f.write(f"throughput,{len(latencies)/sum(latencies) if latencies else 0:.2f}\n")
-        f.write(f"error_rate,{error_rate:.4f}\n")
-    print(f"\nReport saved to {filename}")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='RAG Service Load Tester')
