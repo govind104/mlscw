@@ -1,0 +1,21 @@
+Starting load test with pattern: {'rps': 500, 'duration': 5, 'pattern': 'random', 'seed': None}
+
+Total test time: 307.51 seconds
+
+========================================
+Total requests: 2500
+Successful: 658
+Error rate: 73.68%
+
+Latency metrics (seconds):
+Average: 151.498
+Median: 152.771
+95th percentile: 285.659
+99th percentile: 297.317
+Throughput: 0.01 req/s
+
+Bottleneck Indicators:
+- High error rate indicates system overload
+- Throughput (0.0 req/s) below 80% of target (500 req/s)
+
+[WARNING] System capacity likely exceeded (error rate >5%)

@@ -1,0 +1,18 @@
+Starting load test with pattern: {'rps': 20, 'duration': 10, 'pattern': 'uniform', 'seed': None}
+
+Total test time: 86.17 seconds
+
+========================================
+Total requests: 200
+Successful: 200
+Error rate: 0.00%
+
+Latency metrics (seconds):
+Average: 42.094
+Median: 42.115
+95th percentile: 73.218
+99th percentile: 76.169
+Throughput: 0.02 req/s
+
+Bottleneck Indicators:
+- Throughput (0.0 req/s) below 80% of target (20 req/s)

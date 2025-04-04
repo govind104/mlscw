@@ -39,7 +39,7 @@ chat_pipeline = pipeline("text-generation", model="facebook/opt-125m")
 
 def get_embedding(text: str) -> np.ndarray:
     """Compute a simple average-pool embedding."""
-    inputs = embed_tokenizer(text, return_tensors="pt", truncation=True)
+    inputs = embed_tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
     with torch.no_grad():
         outputs = embed_model(**inputs)
     return outputs.last_hidden_state.mean(dim=1).cpu().numpy()
@@ -74,7 +74,7 @@ def rag_pipeline(query: str, k: int = 2) -> str:
     prompt = f"Question: {query}\nContext:\n{context}\nAnswer:"
     
     # Step 3: LLM Output
-    generated = chat_pipeline(prompt, max_length=100, do_sample=True)[0]["generated_text"]
+    generated = chat_pipeline(prompt, max_length=50, truncation=True, do_sample=True)[0]["generated_text"]
     return generated
 
 # Define request model
@@ -92,4 +92,4 @@ def predict(payload: QueryRequest):
     }
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

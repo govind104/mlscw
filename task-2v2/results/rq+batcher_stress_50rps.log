@@ -1,0 +1,18 @@
+Starting load test with pattern: {'rps': 50, 'duration': 15, 'pattern': 'poisson', 'seed': None}
+
+Total test time: 280.14 seconds
+
+========================================
+Total requests: 750
+Successful: 750
+Error rate: 0.00%
+
+Latency metrics (seconds):
+Average: 134.203
+Median: 133.299
+95th percentile: 253.028
+99th percentile: 262.852
+Throughput: 0.01 req/s
+
+Bottleneck Indicators:
+- Throughput (0.0 req/s) below 80% of target (50 req/s)

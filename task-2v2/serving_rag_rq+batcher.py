@@ -76,11 +76,25 @@ async def lifespan(app: FastAPI):
                     batch_queries = [p.query for p in payloads]
                     batch_embeddings = [get_embedding(q) for q in batch_queries]
                     
-                    # Process each query in batch
-                    for i, (emb, payload) in enumerate(zip(batch_embeddings, payloads)):
-                        result = rag_pipeline(batch_queries[i], payload.k, emb)
-                        result_queues[i].put(result)
+                    # Generate all prompts for the batch
+                    prompts = []
+                    for emb, payload in zip(batch_embeddings, payloads):
+                        retrieved_docs = retrieve_top_k(emb, payload.k)
+                        context = "\n".join(retrieved_docs)
+                        prompts.append(f"Question: {payload.query}\nContext:\n{context}\nAnswer:")
 
+                    # Batch process all prompts
+                    generated_outputs = chat_pipeline(
+                        prompts,
+                        max_length=50,
+                        do_sample=True,
+                        truncation=True,
+                    )
+                    
+                    # Distribute results
+                    for i, output in enumerate(generated_outputs):
+                        result_queues[i].put(output[0]["generated_text"])
+                    
                     # Record metrics after processing
                     processing_time = time.time() - batch_start
                     metrics.record_batch(
@@ -129,7 +143,9 @@ embed_tokenizer = AutoTokenizer.from_pretrained(EMBED_MODEL_NAME)
 embed_model = AutoModel.from_pretrained(EMBED_MODEL_NAME)
 
 # Basic Chat LLM 
-chat_pipeline = pipeline("text-generation", model="facebook/opt-125m")
+chat_tokenizer = AutoTokenizer.from_pretrained("facebook/opt-125m", padding_side="left")
+chat_tokenizer.pad_token = chat_tokenizer.eos_token
+chat_pipeline = pipeline("text-generation", model="facebook/opt-125m", device=0 if torch.cuda.is_available() else -1, tokenizer=chat_tokenizer, batch_size=MAX_BATCH_SIZE)
 # Note: try this 1.5B model if you got enough GPU memory
 # chat_pipeline = pipeline("text-generation", model="Qwen/Qwen2.5-1.5B-Instruct")
 
@@ -146,7 +162,7 @@ chat_pipeline = pipeline("text-generation", model="facebook/opt-125m")
 
 def get_embedding(text: str) -> np.ndarray:
     """Compute a simple average-pool embedding."""
-    inputs = embed_tokenizer(text, return_tensors="pt", truncation=True)
+    inputs = embed_tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
     with torch.no_grad():
         outputs = embed_model(**inputs)
     return outputs.last_hidden_state.mean(dim=1).cpu().numpy()
@@ -168,21 +184,6 @@ def retrieve_top_k(query_emb: np.ndarray, k: int = 2) -> list:
     
     return [documents[i] for i in top_k_indices]
 
-def rag_pipeline(query: str, k: int = 2) -> str:
-    # Step 1: Input embedding
-    query_emb = get_embedding(query)
-    
-    # Step 2: Retrieval
-    retrieved_docs = retrieve_top_k(query_emb, k)
-    
-    # Construct the prompt from query + retrieved docs
-    context = "\n".join(retrieved_docs)
-    prompt = f"Question: {query}\nContext:\n{context}\nAnswer:"
-    
-    # Step 3: LLM Output
-    generated = chat_pipeline(prompt, max_length=100, do_sample=True)[0]["generated_text"]
-    return generated
-
 # Define request model
 class QueryRequest(BaseModel):
     query: str
@@ -201,4 +202,4 @@ def predict(payload: QueryRequest):
         }
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
